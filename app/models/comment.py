@@ -1,8 +1,8 @@
 """Comment model for the application."""
 from datetime import datetime
-from uuid import UUID
-
-from sqlalchemy import Column, DateTime, ForeignKey, SmallInteger, String, Text, func
+from typing import Optional
+from uuid import UUID, uuid4
+from sqlalchemy import Column, DateTime, ForeignKey, SmallInteger, String, Text, Integer, func, Float
 from sqlalchemy.dialects.postgresql import UUID as PostgresUUID
 from sqlalchemy.orm import relationship
 
@@ -12,33 +12,18 @@ class Comment(Base):
     """Comment model."""
     __tablename__ = "comments"
 
-    id = Column(PostgresUUID(as_uuid=True), primary_key=True, server_default=func.gen_random_uuid())
-    user_id = Column(PostgresUUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
-    content = Column(Text, nullable=False)
-    label = Column(SmallInteger, nullable=False)
-    platform = Column(String(20), nullable=False)
-    detected_at = Column(DateTime(timezone=True), server_default=func.now())
-    vector_id = Column(PostgresUUID(as_uuid=True), ForeignKey("comment_vectors.id"))
+    id = Column(String(36), primary_key=True, default=lambda: str(uuid4()))
+    user_id = Column(String(36), ForeignKey("users.id"), nullable=True)
+    content = Column(String(1000), nullable=False)
+    toxicity_level = Column(String(20), nullable=False)
+    toxicity_score = Column(Float, nullable=False, default=0.0)
+    prediction_code = Column(Integer, nullable=False, default=0)
+    preprocessed_text = Column(Text, nullable=True)
+    platform = Column(String(50), nullable=False, default="web")
+    detected_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    vector_id = Column(String(36), ForeignKey("comment_vectors.id"), nullable=True)
 
     # Relationships
     user = relationship("User", back_populates="comments")
-    vector = relationship("CommentVector", back_populates="comments") 
-"""Comment schemas."""
-from enum import Enum
-from pydantic import BaseModel, constr
-
-class ToxicityLevel(str, Enum):
-    """Toxicity levels."""
-    SAFE = "safe"
-    TOXIC = "toxic"
-    HATE = "hate"
-    OFFENSIVE = "offensive"
-
-class CommentCreate(BaseModel):
-    """Schema for comment creation."""
-    content: constr(min_length=1, max_length=1000)
-    platform: str = "web"
-
-    class Config:
-        """Pydantic config."""
-        from_attributes = True
+    vector = relationship("CommentVector", back_populates="comment") 

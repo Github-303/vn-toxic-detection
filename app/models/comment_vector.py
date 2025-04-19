@@ -1,9 +1,10 @@
 """CommentVector model for storing embeddings."""
-from uuid import UUID
-
-from sqlalchemy import Column, String, func
+from datetime import datetime
+from uuid import UUID, uuid4
+from sqlalchemy import Column, String, DateTime, ARRAY, Float, ForeignKey
 from sqlalchemy.dialects.postgresql import UUID as PostgresUUID
 from sqlalchemy.orm import relationship
+from sqlalchemy.sql import func
 from pgvector.sqlalchemy import Vector
 
 from app.models.database import Base
@@ -12,9 +13,10 @@ class CommentVector(Base):
     """CommentVector model."""
     __tablename__ = "comment_vectors"
 
-    id = Column(PostgresUUID(as_uuid=True), primary_key=True, server_default=func.gen_random_uuid())
-    embedding = Column(Vector(768), nullable=False)
-    model_version = Column(String(50), nullable=False)
+    id = Column(String(36), primary_key=True, default=lambda: str(uuid4()))
+    embedding = Column(ARRAY(Float), nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    model_version = Column(String(50), nullable=True, default="default")
 
     # Relationships
-    comments = relationship("Comment", back_populates="vector") 
+    comment = relationship("Comment", back_populates="vector", uselist=False) 

@@ -6,6 +6,8 @@ from pydantic_settings import BaseSettings
 from pydantic import Field
 import os
 from functools import lru_cache
+from pydantic import ConfigDict
+from sqlalchemy.orm import declarative_base
 
 class Settings(BaseSettings):
     """Application settings"""
@@ -41,10 +43,7 @@ class Settings(BaseSettings):
     )
     
     # JWT
-    JWT_SECRET_KEY: str = Field(
-        default="your-secret-key",
-        description="Secret key for JWT encoding/decoding"
-    )
+    JWT_SECRET_KEY: str = "your-secret-key"
     JWT_ALGORITHM: str = Field(
         default="HS256",
         description="Algorithm for JWT encoding/decoding"
@@ -108,17 +107,17 @@ class Settings(BaseSettings):
         description="Execution environment (development, testing, production)"
     )
     
+    # Application settings
+    DEBUG: bool = False
+    MAX_LENGTH: int = 256
+    
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
         # Set SQLAlchemy URI based on DATABASE_URL if not provided
         if not self.SQLALCHEMY_DATABASE_URI and self.DATABASE_URL:
             self.SQLALCHEMY_DATABASE_URI = self.DATABASE_URL.replace("+asyncpg", "")
     
-    class Config:
-        """Configuration for Settings class"""
-        env_file = ".env"
-        env_file_encoding = "utf-8"
-        case_sensitive = True
+    model_config = ConfigDict(from_attributes=True)
 
 @lru_cache()
 def get_settings() -> Settings:

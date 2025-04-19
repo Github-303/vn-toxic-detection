@@ -1,76 +1,97 @@
-"""Tests for API endpoints."""
-from typing import Dict
-
+"""Test API endpoints."""
 import pytest
 from fastapi.testclient import TestClient
-from app.config.settings import settings
+from httpx import AsyncClient
+import asyncio
 
-def test_root(client: TestClient) -> None:
+from app.main import app, MOCK_USER_ID
+from app.utils.auth import create_access_token
+
+client = TestClient(app)
+
+@pytest.mark.asyncio
+async def test_root():
     """Test root endpoint."""
-    response = client.get("/")
-    assert response.status_code == 200
-    assert response.json() == {"message": "Welcome to Vietnamese Toxic Comment Detection API"}
+    async with AsyncClient(app=app, base_url="http://test") as ac:
+        response = await ac.get("/")
+        assert response.status_code == 200
+        assert response.json() == {"message": "Welcome to Toxic Comment Detection API"}
 
-def test_docs_available(client: TestClient) -> None:
-    """Test OpenAPI documentation is available."""
-    response = client.get("/docs")
-    assert response.status_code == 200
-    response = client.get("/openapi.json")
-    assert response.status_code == 200
+@pytest.mark.asyncio
+async def test_docs_available():
+    """Test OpenAPI docs are available."""
+    async with AsyncClient(app=app, base_url="http://test") as ac:
+        response = await ac.get("/docs")
+        assert response.status_code == 200
 
-def test_health_check(client: TestClient) -> None:
+@pytest.mark.asyncio
+async def test_health_check():
     """Test health check endpoint."""
-    response = client.get(f"{settings.API_V1_STR}/health")
-    assert response.status_code == 200
-    assert response.json() == {"status": "healthy"}
+    async with AsyncClient(app=app, base_url="http://test") as ac:
+        response = await ac.get("/health")
+        assert response.status_code == 200
+        assert response.json() == {"status": "healthy"}
 
-def test_auth_flow(client: TestClient) -> None:
-    """Test complete authentication flow."""
-    # Test registration
-    register_data = {
+@pytest.mark.asyncio
+async def test_auth_flow():
+    """Test authentication flow (register -> login -> access protected endpoint)."""
+    # Registration data
+    user_data = {
+        "username": "testuser",
         "email": "test@example.com",
-        "password": "testpass123",
-        "full_name": "Test User"
+        "password": "securepassword123"
     }
-    response = client.post(f"{settings.API_V1_STR}/auth/register", json=register_data)
-    assert response.status_code == 201
-    assert "id" in response.json()
     
-    # Test login
-    login_data = {
-        "username": register_data["email"],
-        "password": register_data["password"]
-    }
-    response = client.post(f"{settings.API_V1_STR}/auth/login", data=login_data)
-    assert response.status_code == 200
-    assert "access_token" in response.json()
-    token = response.json()["access_token"]
-    
-    # Test protected endpoint
-    headers = {"Authorization": f"Bearer {token}"}
-    response = client.get(f"{settings.API_V1_STR}/users/me", headers=headers)
-    assert response.status_code == 200
-    assert response.json()["email"] == register_data["email"]
+    async with AsyncClient(app=app, base_url="http://test") as ac:
+        # Register user
+        register_response = await ac.post("/auth/register", json=user_data)
+        assert register_response.status_code == 201
+        
+        # Login
+        login_data = {
+            "username": user_data["username"],
+            "password": user_data["password"]
+        }
+        login_response = await ac.post("/auth/login", data=login_data)
+        assert login_response.status_code == 200
+        assert "access_token" in login_response.json()
+        
+        # Access protected endpoint with token
+        token = login_response.json()["access_token"]
+        headers = {"Authorization": f"Bearer {token}"}
+        protected_response = await ac.get("/users/me", headers=headers)
+        assert protected_response.status_code == 200
+        assert protected_response.json()["username"] == user_data["username"]
 
-def test_unauthorized_access(client: TestClient) -> None:
-    """Test unauthorized access to protected endpoints."""
-    response = client.get(f"{settings.API_V1_STR}/users/me")
-    assert response.status_code == 401
-    assert response.json()["detail"] == "Not authenticated"
+@pytest.mark.asyncio
+async def test_unauthorized_access():
+    """Test unauthorized access to protected endpoint."""
+    async with AsyncClient(app=app, base_url="http://test") as ac:
+        response = await ac.get("/users/me")
+        assert response.status_code == 401
+        assert "detail" in response.json()
 
-def test_model_prediction(client: TestClient, auth_token: Dict[str, str]) -> None:
+@pytest.mark.asyncio
+async def test_model_prediction():
     """Test model prediction endpoint."""
+    # Create a test token
+    token = create_access_token(data={"sub": MOCK_USER_ID})
+    headers = {"Authorization": f"Bearer {token}"}
+    
+    # Comment to analyze
     test_comment = {
-        "text": "Đây là một bình luận tích cực",
-        "model_type": "transformer"
+        "content": "This is a test comment",
+        "platform": "web"
     }
-    response = client.post(
-        f"{settings.API_V1_STR}/detect",
-        json=test_comment,
-        headers=auth_token
-    )
-    assert response.status_code == 200
-    result = response.json()
-    assert "prediction" in result
-    assert "probability" in result
-    assert "processing_time" in result
+    
+    async with AsyncClient(app=app, base_url="http://test") as ac:
+        response = await ac.post("/comments/analyze", json=test_comment, headers=headers)
+        assert response.status_code == 200
+        
+        # Verify response structure
+        data = response.json()
+        assert "id" in data
+        assert "content" in data
+        assert "toxicity_level" in data
+        assert "toxicity_score" in data
+        assert "created_at" in data

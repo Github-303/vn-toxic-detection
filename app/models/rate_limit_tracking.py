@@ -11,12 +11,14 @@ class RateLimitTracking(Base):
     """Rate limit tracking model for API call monitoring."""
     __tablename__ = "rate_limit_tracking"
 
-    user_id = Column(PostgresUUID(as_uuid=True), ForeignKey("users.id"), primary_key=True)
-    platform = Column(String(20), ForeignKey("platform_configs.platform"), primary_key=True)
-    window_start = Column(DateTime(timezone=True), primary_key=True, server_default=func.now())
+    id = Column(Integer, primary_key=True)
+    platform = Column(String, ForeignKey("platform_configs.platform"), nullable=False)
+    user_id = Column(PostgresUUID(as_uuid=True), ForeignKey("users.id"), nullable=False)
+    count = Column(Integer, default=0)
+    window_start = Column(DateTime, nullable=False)
     request_count = Column(Integer, default=0)
     last_request_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
 
     # Relationships
-    user = relationship("User", back_populates="rate_limits")
-    platform_config = relationship("PlatformConfig", back_populates="rate_limits") 
+    platform_config = relationship("PlatformConfig", back_populates="rate_limits")
+    user = relationship("User", back_populates="rate_limits") 

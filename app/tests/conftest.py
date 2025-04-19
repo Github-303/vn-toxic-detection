@@ -5,12 +5,13 @@ from pathlib import Path
 import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
-from sqlalchemy.orm import sessionmaker
+from sqlalchemy.orm import sessionmaker, declarative_base
 import asyncio
 from datetime import datetime, timedelta
 from typing import Dict, Generator
 from unittest.mock import MagicMock
 import uuid
+from pydantic import ConfigDict
 
 # Add project root to path
 project_root = str(Path(__file__).parent.parent.parent)
@@ -25,6 +26,9 @@ from app.schemas.user import UserCreate
 from app.schemas.comment import CommentCreate, ToxicityLevel
 from app.utils.auth import create_access_token
 from app.config.settings import settings
+
+# Mới
+Base = declarative_base()
 
 @pytest.fixture
 def test_db():
@@ -150,6 +154,9 @@ def mock_ml_service():
 def mock_db_session():
     """Create mock database session."""
     session = MagicMock(spec=AsyncSession)
+    session.query = MagicMock()
+    session.execute.return_value = MagicMock()
+    session.execute.return_value.scalar_one_or_none = MagicMock()
     return session
 
 @pytest.fixture
@@ -168,4 +175,7 @@ def comment_creation_data():
     return CommentCreate(
         content="This is a new comment for testing",
         platform="web"
-    ) 
+    )
+
+# Mới
+model_config = ConfigDict(from_attributes=True) 

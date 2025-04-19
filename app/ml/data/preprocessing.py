@@ -5,7 +5,7 @@ Data preprocessing utilities for ViHSD models
 import re
 import string
 import logging
-from typing import List, Tuple, Optional, Set, Union
+from typing import List, Tuple, Optional, Set, Union, Dict
 import numpy as np
 import pandas as pd
 from underthesea import word_tokenize
@@ -109,35 +109,76 @@ class TextPreprocessor:
             print(f"Error tokenizing text: {e}")
             return text
     
-    def clean_text(self, text: str) -> str:
+    def normalize_urls(self, text: str) -> Tuple[str, int]:
+        """Normalize URLs and count them"""
+        url_pattern = r"http\S+|www\S+|https\S+"
+        urls = re.findall(url_pattern, text, flags=re.MULTILINE)
+        url_count = len(urls)
+        
+        # Replace URLs with placeholder
+        text = re.sub(url_pattern, " <URL> ", text, flags=re.MULTILINE)
+        return text, url_count
+    
+    def normalize_emails(self, text: str) -> Tuple[str, int]:
+        """Normalize email addresses and count them"""
+        email_pattern = r"\S+@\S+"
+        emails = re.findall(email_pattern, text)
+        email_count = len(emails)
+        
+        # Replace emails with placeholder
+        text = re.sub(email_pattern, " <EMAIL> ", text)
+        return text, email_count
+    
+    def normalize_phone_numbers(self, text: str) -> Tuple[str, int]:
+        """Normalize phone numbers and count them"""
+        phone_pattern = r"[\+]?[(]?[0-9]{3}[)]?[-\s\.]?[0-9]{3}[-\s\.]?[0-9]{4,6}"
+        phones = re.findall(phone_pattern, text)
+        phone_count = len(phones)
+        
+        # Replace phone numbers with placeholder
+        text = re.sub(phone_pattern, " <PHONE> ", text)
+        return text, phone_count
+    
+    def clean_text(self, text: str) -> Tuple[str, Dict[str, int]]:
         """
-        Clean text by removing special characters, extra spaces, etc.
+        Clean text while preserving spam detection features
         
         Args:
             text: Input text
             
         Returns:
-            Cleaned text
+            Tuple of (cleaned_text, feature_counts)
         """
         # Convert to lowercase
         text = text.lower()
         
-        # Remove URLs
-        text = re.sub(r"http\S+|www\S+|https\S+", "", text, flags=re.MULTILINE)
+        # Count and normalize special patterns
+        text, url_count = self.normalize_urls(text)
+        text, email_count = self.normalize_emails(text)
+        text, phone_count = self.normalize_phone_numbers(text)
         
-        # Remove email addresses
-        text = re.sub(r"\S+@\S+", "", text)
+        # Count special characters
+        special_char_count = len(re.findall(r'[^\w\s]', text))
         
-        # Remove phone numbers
-        text = re.sub(r"[\+]?[(]?[0-9]{3}[)]?[-\s\.]?[0-9]{3}[-\s\.]?[0-9]{4,6}", "", text)
+        # Count repeated characters (e.g., "hellooooo")
+        repeated_char_count = len(re.findall(r'(.)\1{2,}', text))
         
-        # Remove special characters
-        text = re.sub(r"[^\w\s\d]", " ", text)
+        # Count numbers
+        number_count = len(re.findall(r'\d+', text))
         
         # Remove extra whitespace
-        text = re.sub(r"\s+", " ", text).strip()
+        text = re.sub(r'\s+', ' ', text).strip()
         
-        return text
+        feature_counts = {
+            'urls': url_count,
+            'emails': email_count,
+            'phones': phone_count,
+            'special_chars': special_char_count,
+            'repeated_chars': repeated_char_count,
+            'numbers': number_count
+        }
+        
+        return text, feature_counts
     
     def remove_stopwords(self, tokens: List[str]) -> List[str]:
         """Remove stopwords from token list"""
@@ -149,14 +190,17 @@ class TextPreprocessor:
         tokenized: bool = True, 
         lowercased: bool = True,
         remove_emoji: bool = True,
-        remove_stopwords: bool = True
-    ) -> str:
+        remove_stopwords: bool = True,
+        return_features: bool = False
+    ) -> Union[str, Tuple[str, Dict[str, int]]]:
         """Full preprocessing pipeline"""
         if pd.isna(text) or text is None:
-            return ""
+            return ("", {}) if return_features else ""
         
         text = str(text)
-        text = re.sub(r'\s+', ' ', text).strip()
+        
+        # Clean text and get feature counts
+        text, feature_counts = self.clean_text(text)
         
         # Apply preprocessing steps
         if remove_stopwords:
@@ -165,12 +209,11 @@ class TextPreprocessor:
         if remove_emoji:
             text = self.remove_emojis(text)
         
-        if lowercased:
-            text = text.lower()
-        
         if tokenized and self.vncorenlp is not None:
             text = self.tokenize(text)
         
+        if return_features:
+            return text, feature_counts
         return text
     
     def process_features(

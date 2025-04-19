@@ -186,15 +186,3 @@ pytest --cov=app tests/
 ## 📄 License
 
 MIT License - xem [LICENSE](LICENSE) để biết thêm chi tiết.
-
-## 🙏 Credits
-
-- [underthesea](https://github.com/undertheseanlp/underthesea) cho Vietnamese NLP toolkit
-- [PhoBERT](https://github.com/VinAIResearch/PhoBERT) cho pre-trained Vietnamese BERT
-- [FastAPI](https://fastapi.tiangolo.com/) cho web framework
-
-## 📞 Liên hệ
-
-- Author: Your Name
-- Email: your.email@example.com
-- Project Link: https://github.com/your-username/vihsd 

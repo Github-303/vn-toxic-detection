@@ -3,6 +3,7 @@ from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from jose import jwt, JWTError
 from typing import Optional
 from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config.settings import settings
 from app.models.user import User
@@ -13,11 +14,18 @@ class AuthMiddleware(HTTPBearer):
         super().__init__(auto_error=auto_error)
 
     async def __call__(self, request: Request) -> Optional[User]:
+        auth_header = request.headers.get("Authorization")
+        if not auth_header:
+            raise HTTPException(
+                status_code=401,
+                detail="Not authenticated"
+            )
+        
         credentials: HTTPAuthorizationCredentials = await super().__call__(request)
         
         if not credentials:
             if self.auto_error:
-                raise HTTPException(status_code=403, detail="Missing token")
+                raise HTTPException(status_code=401, detail="Not authenticated")
             return None
         
         try:
@@ -29,22 +37,48 @@ class AuthMiddleware(HTTPBearer):
             )
             user_id = payload.get("sub")
             if not user_id:
-                raise HTTPException(status_code=403, detail="Invalid token")
+                raise HTTPException(status_code=401, detail="Invalid authentication credentials")
             
-            async with get_db() as db:
+            # Get database session
+            session_generator = get_db()
+            db = None
+            try:
+                db = await session_generator.__anext__()
+                
                 result = await db.execute(
                     select(User).filter(User.id == user_id)
                 )
                 user = result.scalar_one_or_none()
                 
                 if not user:
-                    raise HTTPException(status_code=403, detail="User not found")
+                    raise HTTPException(status_code=401, detail="User not found")
                 
                 if not user.is_active:
-                    raise HTTPException(status_code=403, detail="User is inactive")
+                    raise HTTPException(status_code=401, detail="Inactive user")
                 
                 request.state.user = user
                 return user
+            except Exception as e:
+                if db is not None:
+                    try:
+                        await db.rollback()
+                    except:
+                        pass  # Ignore errors during rollback
+                raise e
+            finally:
+                if db is not None:
+                    try:
+                        await db.close()
+                    except:
+                        pass  # Ignore errors during close
             
+        except jwt.ExpiredSignatureError:
+            raise HTTPException(
+                status_code=401,
+                detail="Token has expired"
+            )
         except JWTError:
-            raise HTTPException(status_code=403, detail="Invalid token") 
+            raise HTTPException(
+                status_code=401,
+                detail="Invalid authentication credentials"
+            ) 

@@ -5,17 +5,21 @@ Transformer models for Vietnamese Hate Speech Detection
 import os
 import time
 import logging
+import json
+import warnings
 from typing import Dict, Any, Tuple, Optional, List
-
 import torch
-import numpy as np
 from transformers import (
     AutoTokenizer,
     AutoModelForSequenceClassification,
     Trainer,
     TrainingArguments,
-    EarlyStoppingCallback
+    EarlyStoppingCallback,
+    PretrainedConfig
 )
+from safetensors.torch import load_file
+
+logger = logging.getLogger(__name__)
 
 class TransformerModelManager:
     """
@@ -62,7 +66,7 @@ class TransformerModelManager:
         """
         self.model_name = model_name
         self.num_labels = num_labels
-        self.model_dir = os.path.join(model_dir, model_name.lower())
+        self.model_dir = model_dir
         
         # Set device
         if device is None:
@@ -90,18 +94,22 @@ class TransformerModelManager:
         try:
             # Initialize tokenizer
             self.logger.info(f"Loading tokenizer for {self.model_name}...")
-            self.tokenizer = config['tokenizer_class'].from_pretrained(
-                config['base_model'],
-                **config['tokenizer_kwargs']
-            )
+            with warnings.catch_warnings():
+                warnings.filterwarnings("ignore")
+                self.tokenizer = config['tokenizer_class'].from_pretrained(
+                    config['base_model'],
+                    **config['tokenizer_kwargs']
+                )
             
             # Initialize model
             self.logger.info(f"Loading model for {self.model_name}...")
-            self.model = config['model_class'].from_pretrained(
-                config['base_model'],
-                num_labels=self.num_labels,
-                ignore_mismatched_sizes=True
-            )
+            with warnings.catch_warnings():
+                warnings.filterwarnings("ignore")
+                self.model = config['model_class'].from_pretrained(
+                    config['base_model'],
+                    num_labels=self.num_labels,
+                    ignore_mismatched_sizes=True
+                )
             
             # Move model to device
             self.model.to(self.device)
@@ -109,6 +117,80 @@ class TransformerModelManager:
         except Exception as e:
             self.logger.error(f"Error initializing {self.model_name}: {str(e)}")
             raise e
+    
+    def load_model(
+        self,
+        model_path: str,
+        config_path: Optional[str] = None,
+        training_args_path: Optional[str] = None
+    ) -> AutoModelForSequenceClassification:
+        """
+        Load model from files
+        
+        Args:
+            model_path: Path to model weights file (.safetensors)
+            config_path: Path to model config file (.json)
+            training_args_path: Path to training args file (.bin)
+            
+        Returns:
+            Loaded model
+        """
+        try:
+            # Load config if provided
+            if config_path and os.path.exists(config_path):
+                with open(config_path, 'r') as f:
+                    config_dict = json.load(f)
+                config = PretrainedConfig(**config_dict)
+                self.model = AutoModelForSequenceClassification.from_config(config)
+            
+            # Load model weights
+            if os.path.exists(model_path):
+                state_dict = load_file(model_path)
+                with warnings.catch_warnings():
+                    warnings.filterwarnings("ignore")
+                    self.model.load_state_dict(state_dict, strict=False)
+                
+            # Load training args if provided
+            if training_args_path and os.path.exists(training_args_path):
+                training_args = torch.load(training_args_path)
+                self.model.config.update(training_args)
+            
+            # Move model to device
+            self.model.to(self.device)
+            return self.model
+            
+        except Exception as e:
+            self.logger.error(f"Error loading model: {str(e)}")
+            raise e
+    
+    def predict_single(self, text: str) -> int:
+        """
+        Predict class for a single text
+        
+        Args:
+            text: Input text
+            
+        Returns:
+            Predicted class index
+        """
+        # Tokenize input
+        inputs = self.tokenizer(
+            text,
+            return_tensors="pt",
+            padding=True,
+            truncation=True,
+            max_length=256
+        )
+        inputs = {k: v.to(self.device) for k, v in inputs.items()}
+        
+        # Get prediction
+        with torch.no_grad():
+            outputs = self.model(**inputs)
+            logits = outputs.logits
+            probabilities = torch.softmax(logits, dim=1)
+            predicted = torch.argmax(probabilities, dim=1)
+            
+        return predicted.item()
     
     def setup_training_args(
         self,
@@ -198,85 +280,7 @@ class TransformerModelManager:
         # Train model
         trainer.train()
         
-        training_time = time.time() - start_time
-        self.logger.info(f"{self.model_name} training completed in {training_time:.2f} seconds")
-        
-        # Save model
-        output_dir = trainer.args.output_dir
-        trainer.save_model(output_dir)
-        self.logger.info(f"Model saved to {output_dir}")
-        
-        return trainer
-    
-    def predict(
-        self, 
-        test_dataset, 
-        trainer: Optional[Trainer] = None
-    ) -> Tuple[np.ndarray, Dict[str, float]]:
-        """
-        Make predictions on test dataset and calculate metrics
-        """
-        if trainer is None:
-            if self.trainer is None:
-                raise ValueError("Trainer not initialized. Call create_trainer() first")
-            trainer = self.trainer
-        
-        self.logger.info(f"Starting {self.model_name} evaluation...")
-        start_time = time.time()
-        
-        # Predict
-        prediction_output = trainer.predict(test_dataset)
-        y_pred = np.argmax(prediction_output.predictions, axis=-1)
-        
-        inference_time = time.time() - start_time
-        avg_inference_time = inference_time / len(test_dataset)
-        self.logger.info(f"{self.model_name} inference completed in {inference_time:.2f} seconds")
-        self.logger.info(f"Average inference time per sample: {avg_inference_time:.4f} seconds")
-        
-        # Return predictions and timing information
-        metrics = {
-            'inference_time': inference_time,
-            'avg_inference_time': avg_inference_time
-        }
-        
-        return y_pred, metrics
-    
-    def predict_single(self, text: str) -> int:
-        """
-        Make a prediction on a single text input
-        """
-        if self.model is None or self.tokenizer is None:
-            self.logger.error("Model or tokenizer not initialized")
-            raise ValueError("Model or tokenizer not initialized")
-        
-        # Preprocess and tokenize text
-        encoded_input = self.tokenizer(
-            text,
-            truncation=True,
-            padding=True,
-            return_tensors='pt'
-        ).to(self.device)
-        
-        # Make prediction
-        with torch.no_grad():
-            output = self.model(**encoded_input)
-        
-        # Get predicted class
-        predicted_class = torch.argmax(output.logits, dim=1).item()
-        
-        return predicted_class
-    
-    def load_model(self, model_path: Optional[str] = None):
-        """
-        Load a saved model
-        """
-        if model_path is None:
-            model_path = self.model_dir
-        
-        try:
-            self.model = AutoModelForSequenceClassification.from_pretrained(model_path)
-            self.model.to(self.device)
-            self.logger.info(f"Model loaded from {model_path}")
-        except Exception as e:
-            self.logger.error(f"Error loading model from {model_path}: {str(e)}")
-            raise e
+        # Log training time
+        end_time = time.time()
+        training_time = end_time - start_time
+        self.logger.info(f"Training completed in {training_time:.2f} seconds")

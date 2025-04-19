@@ -11,7 +11,7 @@ from app.models.user import User
 router = APIRouter()
 auth_middleware = AuthMiddleware()
 
-@router.post("/register", response_model=UserResponse)
+@router.post("/register", response_model=UserResponse, status_code=status.HTTP_201_CREATED)
 async def register(user_data: UserCreate) -> Any:
     try:
         user = AuthController.register_user(
@@ -40,6 +40,11 @@ async def login(form_data: OAuth2PasswordRequestForm = Depends()) -> Any:
         data={"sub": str(user.id)}
     )
     return {"access_token": access_token, "token_type": "bearer"}
+
+@router.get("/users/me", response_model=UserResponse)
+async def get_current_user(current_user: User = Depends(auth_middleware)) -> Any:
+    """Get the current authenticated user."""
+    return current_user
 
 @router.post("/refresh", response_model=Token)
 async def refresh_token(current_user: UserResponse = Depends(auth_middleware)) -> Any:
