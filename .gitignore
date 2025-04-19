@@ -1,0 +1,115 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+pytest.ini
+
+# Virtual Environment
+.env
+.venv
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+.DS_Store
+.cursor
+.idea
+
+
+# Project specific
+logs/
+*.log
+.coverage
+htmlcov/
+.pytest_cache/
+.mypy_cache/
+
+# ML models and data
+app/ml/data/final_dev.csv
+app/ml/data/final_test.csv
+app/ml/data/vietnamese-stopwords-dash.txt
+app/ml/training/model_vihsd_dnn.py
+app/ml/training/model_vihsd_monolingual_transformers.py
+app/ml/data/balanced_train.csv
+app/ml/h5_safetensors/*
+app/ml/h5_safetensors/*.h5
+app/ml/h5_safetensors/*.safetensors
+app/ml/h5_safetensors/*.bin
+*.model
+*.pkl
+*.joblib
+
+# Database
+*.sqlite3
+*.db
+
+# Docker
+.docker/
+docker-compose.override.yml
+docker-compose.yml
+Dockerfile
+
+
+# Node modules (if using frontend)
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Temporary files
+*.tmp
+*.temp
+*.bak
+*.swp
+*~
+
+# Local development settings
+local_settings.py
+settings_local.py
+
+# Jupyter Notebook
+.ipynb_checkpoints
+*.ipynb
+
+# Distribution / packaging
+.Python
+env/
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg 
